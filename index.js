@@ -1,8 +1,16 @@
 const request = require('axios')
 
+// numbers per page
+const LIMIT = 100
+const ARTICLE_TYPE = '5'
+
 // Config for health check endpoint
-function getSspaiArticleInfoURL() {
-    return `https://sspai.com/api/v1/matrix/editor/article/self/page/get?limit=100&offset=0&created_at=${Math.floor(Date.now()/1000)}&type=5`
+function getSspaiArticleInfoURL ({ limit, offset }) {
+  return `https://sspai.com/api/v1/matrix/editor/article/self/page/get?limit=${
+    limit ?? LIMIT
+  }&offset=${offset ?? 0}&created_at=${Math.floor(
+    Date.now() / 1000
+  )}&type=${ARTICLE_TYPE}`
 }
 
 const token = process.env.SSPAI_TOKEN
@@ -16,19 +24,36 @@ collectDefaultMetrics({
 
 // Get articles info
 async function getArticlesInfo () {
-  const response = await request.get(getSspaiArticleInfoURL(), {
-    headers: {
-      'Authorization': `Bearer ${token}`
-    }
-  })
-  return response.data.data.map(article => {
-    return {
+  const articlesInfo = []
+  let offset = 0
+
+  while (true) {
+    const response = await request.get(
+      getSspaiArticleInfoURL({ limit: LIMIT, offset }),
+      {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    )
+
+    if (!response.data.data) throw new Error('Invalid response')
+
+    response.data.data.forEach((article) => {
+      articlesInfo.push({
         title: article.title,
         views: article.view_count,
         likes: article.like_count,
         comments: article.comment_count
-    }
-  })
+      })
+    })
+
+    if (response.data.data.length === 0 || response.data.data.length < LIMIT) { break }
+
+    offset += LIMIT
+  }
+
+  return articlesInfo
 }
 
 new Prometheus.Gauge({
@@ -37,7 +62,7 @@ new Prometheus.Gauge({
   labelNames: ['title', 'type'],
   async collect () {
     const articlesInfo = await getArticlesInfo()
-    articlesInfo.forEach(info => {
+    articlesInfo.forEach((info) => {
       this.set({ title: info.title, type: 'likes' }, info.likes)
       this.set({ title: info.title, type: 'views' }, info.views)
       this.set({ title: info.title, type: 'comments' }, info.comments)
@@ -50,7 +75,12 @@ const app = express()
 const port = 3000
 
 app.get('/metrics', async (req, res) => {
-  res.end(await Prometheus.register.metrics())
+  try {
+    res.end(await Prometheus.register.metrics())
+  } catch (error) {
+    console.error(error)
+    res.status(500).send(`You should check the log: ${error.toString()}`)
+  }
 })
 
 app.listen(port, () => {
