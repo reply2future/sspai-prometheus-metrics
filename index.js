@@ -1,8 +1,12 @@
 const request = require('axios')
+const { isValid, checkIfShouldNotify } = require('./token')
 
 // numbers per page
 const LIMIT = 100
 const ARTICLE_TYPE = '5'
+
+// check token schedule time gap
+const SCHEDULE_TIME_GAP = 1000 * 3600 * 24 * 7
 
 // Config for health check endpoint
 function getSspaiArticleInfoURL ({ limit, offset }) {
@@ -14,6 +18,28 @@ function getSspaiArticleInfoURL ({ limit, offset }) {
 }
 
 const token = process.env.SSPAI_TOKEN
+if (!isValid(token)) {
+  console.error(`Invalid token: ${token}`)
+  process.exit(1)
+}
+
+const tokenExpNotifyWebHookURL = process.env.TOKEN_EXP_NOTIFY_WEBHOOK_URL
+setInterval(() => {
+  const { shouldNotify, message } = checkIfShouldNotify(token)
+
+  if (!shouldNotify) {
+    console.info(message)
+    return
+  }
+
+  if (tokenExpNotifyWebHookURL) {
+    request
+      .post(tokenExpNotifyWebHookURL, {
+        data: { message }
+      })
+      .then(() => console.log('Token Expiry Notification Sent'))
+  }
+}, SCHEDULE_TIME_GAP)
 
 // Initialize Prometheus
 const Prometheus = require('prom-client')
