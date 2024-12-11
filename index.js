@@ -102,6 +102,7 @@ const port = 3000
 
 app.get('/metrics', async (req, res) => {
   try {
+    res.set("Content-Type", Prometheus.register.contentType);
     res.end(await Prometheus.register.metrics())
   } catch (error) {
     console.error(error)
