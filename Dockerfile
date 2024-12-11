@@ -4,7 +4,7 @@ ENV SSPAI_TOKEN=test
 
 COPY package*.json .
 
-RUN npm i --production
+RUN npm i --omit=dev
 
 COPY . .
 
